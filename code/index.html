@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Slideshow</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            text-align: center;
+            background-color: black;
+        }
+
+        img {
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain;          /* default — overridden via JS */
+            position: absolute;
+            top: 0; left: 0;
+            opacity: 1;
+            transition: opacity 600ms ease;
+        }
+
+        /* All three controls grouped in a single bottom-center pill.
+           Auto-hide (opacity 0 / 1) is driven by the body.controls-visible
+           class toggled by the mousemove/touchstart listener below. */
+        .controls {
+            position: fixed;
+            bottom: 22px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+            padding: 6px;
+            background-color: rgba(0, 0, 0, 0.35);
+            border-radius: 999px;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            opacity: 0;
+            transition: opacity 0.25s ease;
+            z-index: 20;
+        }
+        body.controls-visible .controls { opacity: 1; }
+
+        .control-btn {
+            min-width: 44px;
+            padding: 6px 14px;
+            font-size: 18px;
+            line-height: 1;
+            color: #fff;
+            cursor: pointer;
+            background-color: transparent;
+            border: none;
+            outline: none;
+            border-radius: 999px;
+            transition: background-color 0.15s ease;
+        }
+        .control-btn:hover {
+            background-color: rgba(255, 255, 255, 0.18);
+        }
+        .control-btn:active {
+            background-color: rgba(255, 255, 255, 0.30);
+        }
+
+        /* Camera-style date overlay (bottom-right). Hidden until enabled. */
+        #date-overlay {
+            position: fixed;
+            right: 22px;
+            bottom: 22px;
+            color: #ffaa00;
+            font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            font-size: clamp(14px, 2.2vw, 22px);
+            letter-spacing: 1px;
+            font-weight: 600;
+            text-shadow:
+                0 0 4px rgba(0,0,0,0.85),
+                1px 1px 2px rgba(0,0,0,0.85),
+                -1px -1px 2px rgba(0,0,0,0.85);
+            pointer-events: none;
+            user-select: none;
+            display: none;
+            z-index: 10;
+        }
+        #date-overlay.visible { display: block; }
+    </style>
+</head>
+<body>
+
+    <div id="slideshow"></div>
+
+    <!-- Camera-style date overlay -->
+    <div id="date-overlay"></div>
+
+    <!-- Navigation controls — grouped bottom-center pill, auto-hidden. -->
+    <div class="controls" aria-label="Slideshow controls">
+        <button class="control-btn" id="prev-btn" onclick="prevImage()" aria-label="Previous">&#10094;</button>
+        <button class="control-btn" id="pauseButton" onclick="togglePause()" aria-label="Pause">&#9208;</button>
+        <button class="control-btn" id="next-btn" onclick="nextImage()" aria-label="Next">&#10095;</button>
+    </div>
+
+    <script>
+        // Auto-hide controls: show all three control buttons when the user
+        // moves the mouse or taps the screen; hide them again after 3 s of
+        // no activity. Standard video-player UX — keeps the photo
+        // distraction-free while still discoverable on demand.
+        (function() {
+            var hideTimer = null;
+            var IDLE_MS = 3000;
+            function show() {
+                document.body.classList.add('controls-visible');
+                clearTimeout(hideTimer);
+                hideTimer = setTimeout(function() {
+                    document.body.classList.remove('controls-visible');
+                }, IDLE_MS);
+            }
+            document.addEventListener('mousemove',  show, { passive: true });
+            document.addEventListener('touchstart', show, { passive: true });
+        })();
+    </script>
+    <script>
+        var images = [];            // Array of {path, date} objects
+        var index = 0;              // Current image index
+        var slideshowInterval;      // Interval object
+        // Two stacked <img> layers for crossfade — at any moment one is fully
+        // visible (opacity 1) and the other is hidden (opacity 0). When the
+        // next image is ready we flip their opacities; CSS transitions the swap.
+        var imgA, imgB;
+        var frontIsA = true;
+        var delay = 5;              // Default delay in seconds
+        var fitMode = 'contain';    // 'contain' (letterbox) or 'cover' (zoom-fill)
+        var showDate = false;       // Camera-style date overlay on/off
+        var isShuffled = false;     // Tracks whether images[] is currently in shuffled order
+
+        // Append a millisecond timestamp so the browser never serves a
+        // cached response for the polling endpoints — without this, the
+        // viewer sees stale change_status / shuffle / delay values for
+        // hours after a setting changes.
+        function backendUrl(path) {
+            return 'api/' + path + '?_=' + Date.now();
+        }
+
+        /**
+         * Build the src URL for a slideshow image entry. Appends ?v=<filectime>
+         * so browsers re-fetch when a file is rewritten on disk (rotation,
+         * resize, etc.) — unchanged files keep the same v and cache-hit.
+         */
+        function imgUrl(entry) {
+            return "/" + entry.path + (entry.v ? "?v=" + entry.v : "");
+        }
+
+        /**
+         * Conditionally shuffle an array using Fisher-Yates algorithm
+         * If get_shuffle.php returns 1, array will be shuffled, else returned as-is
+         */
+        function shuffleArray(array) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", backendUrl("get_shuffle.php"), false); // Synchronous request
+            xhr.send();
+
+            if (xhr.status === 200 && parseInt(xhr.responseText.trim()) === 1) {
+                console.log("Shuffle Enabled");
+                for (var i = array.length - 1; i > 0; i--) {
+                    var j = Math.floor(Math.random() * (i + 1));
+                    var temp = array[i];
+                    array[i] = array[j];
+                    array[j] = temp;
+                }
+                isShuffled = true;
+            } else {
+                console.log("Shuffle disabled");
+                array.sort(function(a, b) {
+                    var nameA = a.path.split('/').pop().toLowerCase();
+                    var nameB = b.path.split('/').pop().toLowerCase();
+                    return nameA.localeCompare(nameB);
+                });
+                isShuffled = false;
+            }
+
+            return array;
+        }
+
+
+        /**
+         * Fetch fit mode from backend and apply to current image (if any).
+         */
+        function fetchFitMode(cb) {
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState !== 4 || xhr.status !== 200) return;
+                var v = (xhr.responseText || '').trim();
+                fitMode = (v === 'cover') ? 'cover' : 'contain';
+                if (imgA) imgA.style.objectFit = fitMode;
+                if (imgB) imgB.style.objectFit = fitMode;
+                console.log("Fit mode:", fitMode);
+                if (cb) cb();
+            };
+            xhr.open("GET", backendUrl("get_fit_mode.php"), true);
+            xhr.send();
+        }
+
+        /**
+         * Fetch the show-date toggle and update overlay visibility.
+         */
+        function fetchShowDate() {
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState !== 4 || xhr.status !== 200) return;
+                showDate = (xhr.responseText.trim() === '1');
+                updateDateOverlay();
+                console.log("Date overlay:", showDate ? "ON" : "OFF");
+            };
+            xhr.open("GET", backendUrl("get_show_date.php"), true);
+            xhr.send();
+        }
+
+        /**
+         * Update the date overlay element from the current image's date field.
+         */
+        function updateDateOverlay() {
+            var el = document.getElementById("date-overlay");
+            if (!el) return;
+            var current = images[index];
+            var dateStr = (current && current.date) ? current.date : '';
+            if (showDate && dateStr) {
+                el.textContent = dateStr;
+                el.classList.add("visible");
+            } else {
+                el.classList.remove("visible");
+            }
+        }
+
+        /**
+         * Fetch the slideshow delay value from backend (get_delay.php)
+         */
+        function fetchDelay() {
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    var serverDelay = parseInt(xhr.responseText);
+                    if (!isNaN(serverDelay) && serverDelay > 0) {
+                        delay = serverDelay;
+                        console.log("Delay set to:", delay, "seconds");
+                    } else {
+                        console.warn("Invalid delay from server. Using default:", delay);
+                    }
+                }
+            };
+            xhr.open("GET", backendUrl("get_delay.php"), true);
+            xhr.send();
+        }
+
+        /**
+         * Fetch image list from backend (get_images.php) and call createImageElement()
+         */
+        function getImages() {
+            var xhttp = new XMLHttpRequest();
+            xhttp.onreadystatechange = function () {
+                if (this.readyState === 4 && this.status === 200) {
+                    images = JSON.parse(this.responseText);
+                    if (images.length > 0) {
+                        images = shuffleArray(images);
+                        console.log("First image:", images[0]);
+                        createImageElement();
+                    } else {
+                        console.error("No images found!");
+                    }
+                }
+            };
+            xhttp.open("GET", backendUrl("get_images.php"), true);
+            xhttp.send();
+        }
+
+        /**
+         * Create and display the image element for slideshow
+         */
+        function createImageElement() {
+            var slideshowDiv = document.getElementById("slideshow");
+
+            if (!slideshowDiv) {
+                console.error("Slideshow div not found!");
+                return;
+            }
+
+            // Set up the dual buffers once. After that we just swap their
+            // opacities on each cycle — never add/remove DOM nodes.
+            if (!imgA) {
+                imgA = document.createElement("img");
+                imgB = document.createElement("img");
+                imgA.style.opacity = 1;
+                imgB.style.opacity = 0;
+                slideshowDiv.appendChild(imgA);
+                slideshowDiv.appendChild(imgB);
+            }
+            imgA.style.objectFit = fitMode;
+            imgB.style.objectFit = fitMode;
+
+            // First image — paint without a fade so the slideshow starts crisp.
+            const front = frontIsA ? imgA : imgB;
+            front.src   = imgUrl(images[index]);
+            console.log("src:", front.src);
+            updateDateOverlay();
+
+            // Start automatic slideshow with delay
+            slideshowInterval = setInterval(nextImage, delay * 1000);
+
+            //preLoad next image Right after setting the image the first time
+            preloadImages();
+        }
+
+        /**
+         * preload image to avoid flicker during transition
+         */
+        function preloadImages() {
+            let nextIndex = (index + 1) % images.length;
+            const preloadNext = new Image();
+            preloadNext.src = imgUrl(images[nextIndex]);
+        }
+
+        /**
+         * Crossfade to a new image src. Loads it into the hidden layer, waits
+         * for decode, then flips opacities so the CSS transition does the fade.
+         * Falls back to instant swap if decode/load fails so the show stays alive.
+         */
+        function crossfadeTo(src) {
+            const back  = frontIsA ? imgB : imgA;
+            const front = frontIsA ? imgA : imgB;
+            back.style.objectFit = fitMode;
+            back.src = src;
+            const ready = back.decode
+                ? back.decode()
+                : new Promise(function(res, rej) { back.onload = res; back.onerror = rej; });
+            ready.then(swap, swap);   // either way, perform the swap
+
+            function swap() {
+                back.style.opacity  = 1;
+                front.style.opacity = 0;
+                frontIsA = !frontIsA;
+                updateDateOverlay();
+            }
+        }
+
+        /**
+         * Show next image in array
+         */
+        function nextImage() {
+            if (images.length === 0) return;
+            index = (index + 1) % images.length;
+            console.log("Image name:", images[index].path.split('/').pop());
+            crossfadeTo(imgUrl(images[index]));
+            preloadImages();
+        }
+
+        /**
+         * Show previous image in array
+         */
+        function prevImage() {
+            if (images.length === 0) return;
+            index = (index - 1 + images.length) % images.length;
+            crossfadeTo(imgUrl(images[index]));
+        }
+
+        /**
+         * Toggle pause/start of slideshow
+         */
+        function togglePause() {
+            var pauseButton = document.getElementById("pauseButton");
+            if (slideshowInterval) {
+                clearInterval(slideshowInterval);
+                slideshowInterval = null;
+                pauseButton.innerHTML = "&#9654;";
+            } else {
+                slideshowInterval = setInterval(nextImage, delay * 1000);
+                pauseButton.innerHTML = "&#9208;";
+            }
+        }
+
+        /**
+         * Poll the backend for changes by the user. We compare the mtime of
+         * change_status.txt against the value we last saw on this viewer — a
+         * bigger number means something was toggled (shuffle, delay, fit, date
+         * overlay, folder add/remove, playlist load, image rotate/crop/trash).
+         *
+         * Each viewer keeps its own baseline, so any number of displays can run
+         * simultaneously and all will reload when a change happens — no more
+         * "first viewer wins" race that the old reset-the-flag scheme had.
+         */
+        var lastStatusMtime = null;
+        function checkStatus() {
+            var xhttp2 = new XMLHttpRequest();
+            xhttp2.onreadystatechange = function () {
+                if (this.readyState !== 4 || this.status !== 200) return;
+                var mtime = parseInt(this.responseText, 10) || 0;
+                if (lastStatusMtime === null) {       // first poll: just record it
+                    lastStatusMtime = mtime;
+                    return;
+                }
+                if (mtime > lastStatusMtime) {
+                    lastStatusMtime = mtime;          // belt-and-braces in case reload is slow
+                    location.reload();
+                }
+            };
+            xhttp2.open("GET", backendUrl("get_change_status.php"), true);
+            xhttp2.send();
+        }
+
+
+
+        // Initialize on page load
+        fetchDelay();
+        fetchFitMode();
+        fetchShowDate();
+
+        getImages(); // Fetch image paths from backend and call createImageElement() to start the slideshow
+
+        // Snapshot the change-status baseline right now (rather than waiting
+        // 5s for the first interval tick). Otherwise a toggle made between
+        // page load and the first poll gets baselined as "the way things were
+        // since the start" and the viewer silently misses the reload.
+        checkStatus();
+        // Periodically check for changes by the user every 5 seconds
+        setInterval(checkStatus, 5000);
+    </script>
+
+</body>
+</html>

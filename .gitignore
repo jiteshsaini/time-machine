@@ -1,0 +1,19 @@
+# macOS junk
+.DS_Store
+._*
+
+# Ignore Claude files
+.claude
+
+# Ignore private images entirely
+images/private/
+
+# Ignore runtime state
+trash/
+code/txt/*.txt
+code/txt/*.json
+**/.resize_progress.json
+
+# Optional
+*.log
+*.tmp
