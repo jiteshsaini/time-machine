@@ -10,7 +10,7 @@ images/private/
 
 # Ignore runtime state
 trash/
-code/txt/*.txt
+code/txt/*.log
 code/txt/*.json
 **/.resize_progress.json
 
