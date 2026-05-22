@@ -43,6 +43,15 @@
         }
         body.controls-visible .controls { opacity: 1; }
 
+        /* Hide the mouse pointer while idle, in sync with the controls.
+           The .controls-visible class is added on mousemove/touchstart and
+           removed after 3 s of inactivity (see script below), so the cursor
+           disappears and reappears together with the control pill. */
+        body:not(.controls-visible),
+        body:not(.controls-visible) * {
+            cursor: none !important;
+        }
+
         .control-btn {
             min-width: 44px;
             padding: 6px 14px;
