@@ -4,6 +4,12 @@
 # Compatible with: Raspberry Pi OS Bookworm & Trixie (and beyond)
 # Browser: Firefox (primary, Trixie) / Chromium (fallback, Bookworm)
 # Fully automated — no user intervention required
+#
+#   sudo bash install.sh               fresh card: set up everything
+#   sudo bash install.sh --code-only   update the app's code only
+#
+# Re-running it on an existing install is safe: the photos, the trash
+# and the app's settings are carried over and only the code is replaced.
 # ================================================================
 
 # No 'set -e' — non-critical steps must not abort the install.
@@ -11,6 +17,11 @@
 
 APP_URL="http://127.0.0.1/time_machine/code/"
 KIOSK_WRAPPER="/usr/local/bin/kiosk-browser"
+
+# --code-only (or CODE_ONLY=1) skips system setup (steps 1-8) and goes
+# straight to fetching the code — a one-minute update instead of a full run.
+[ "$1" = "--code-only" ] && CODE_ONLY=1
+CODE_ONLY="${CODE_ONLY:-0}"
 
 # ---------------------------------------------------------------
 # Helper: run a command as the actual (non-root) user
@@ -62,6 +73,11 @@ SESSION_TYPE=$(detect_session)
 echo "✅ Session type : $SESSION_TYPE"
 echo ""
 
+if [ "$CODE_ONLY" = "1" ]; then
+    echo "⏭  --code-only: skipping system setup (steps 1-8)."
+    echo ""
+else
+
 
 # ---------------------------------------------------------------
 # STEP 1: Update & Upgrade
@@ -85,6 +101,10 @@ echo "***************************************************************"
 sudo apt install apache2 -y
 sudo systemctl enable apache2
 sudo apt install php libapache2-mod-php php-gd -y
+
+# Photo tools: crop, rotate and resize run Python with Pillow and piexif.
+# rsync is what a backup computer uses to pull a copy of the library.
+sudo apt install python3-pil python3-piexif rsync -y
 
 PHP_VERSION=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;" 2>/dev/null)
 if [ -z "$PHP_VERSION" ]; then
@@ -382,31 +402,63 @@ fi
 sudo systemctl restart smbd && echo "✅ Samba restarted." \
     || echo "⚠️  Samba restart failed (non-critical)."
 
+fi  # end of system setup (skipped with --code-only)
+
 
 # ---------------------------------------------------------------
 # STEP 9: Download Time-Machine
+#
+# The photo library, the trash and the app's settings live inside the
+# install folder, so an update must carry them into the new copy. They
+# are moved, not copied — same disk, so even a large library takes a
+# second — and the timestamped folder left behind holds only old code.
+# The clone goes to a side folder first, so a failed clone (a mistyped
+# token, no network) leaves the running install untouched.
 # ---------------------------------------------------------------
 
 echo "***************************************************************"
 echo "****** Downloading Time-Machine Software **********************"
 echo "***************************************************************"
 
+carry_over_data() {
+    local from="$1" to="$2" d
+    for d in images trash; do
+        if [ -d "$from/$d" ]; then
+            sudo rm -rf "$to/$d"
+            sudo mv "$from/$d" "$to/$d"
+        fi
+    done
+    # Settings: every state file except .htaccess, which belongs to the code.
+    if [ -d "$from/code/txt" ]; then
+        sudo find "$from/code/txt" -maxdepth 1 -type f ! -name .htaccess \
+            -exec cp -a {} "$to/code/txt/" \;
+    fi
+    echo "✅ Photos, trash and settings carried over from the previous install."
+}
+
 sudo apt install git -y
 
 CODE_DIR="/var/www/html/time_machine"
+NEW_DIR="${CODE_DIR}.new"
+sudo rm -rf "$NEW_DIR"
+
+echo "If the repository is private, git asks for your GitHub username and,"
+echo "as the password, a personal access token."
+if ! sudo git clone https://github.com/jiteshsaini/time-machine "$NEW_DIR"; then
+    echo "❌ ERROR: Failed to clone Time-Machine from GitHub. Aborting."
+    sudo rm -rf "$NEW_DIR"
+    exit 1
+fi
+sudo rm -rf "$NEW_DIR/.git"
 
 if [ -e "$CODE_DIR" ]; then
     timestamp=$(date "+%Y-%m-%d_%H-%M-%S")
-    sudo mv "$CODE_DIR" "${CODE_DIR}.${timestamp}"
-    echo "Previous install backed up to ${CODE_DIR}.${timestamp}"
+    OLD_DIR="${CODE_DIR}.${timestamp}"
+    sudo mv "$CODE_DIR" "$OLD_DIR"
+    carry_over_data "$OLD_DIR" "$NEW_DIR"
+    echo "Previous code kept in $OLD_DIR"
 fi
-
-if ! sudo git clone https://github.com/jiteshsaini/time-machine "$CODE_DIR"; then
-    echo "❌ ERROR: Failed to clone Time-Machine from GitHub. Aborting."
-    exit 1
-fi
-
-sudo rm -rf "$CODE_DIR/.git"
+sudo mv "$NEW_DIR" "$CODE_DIR"
 sudo chmod -R 777 /var/www/html/
 echo "✅ Time-Machine downloaded and permissions set."
 
@@ -425,7 +477,7 @@ echo ""
 echo "  OS              : ${OS_VERSION:-unknown}"
 echo "  User            : $ACTUAL_USER"
 echo "  Session type    : $SESSION_TYPE"
-echo "  Browser engine  : $BROWSER_ENGINE"
+echo "  Browser engine  : ${BROWSER_ENGINE:-unchanged (--code-only)}"
 echo "  Kiosk wrapper   : $KIOSK_WRAPPER"
 echo "  IP Address      : $(hostname -I | awk '{print $1}')"
 echo ""
