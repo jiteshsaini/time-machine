@@ -12,6 +12,10 @@
 # and the app's settings are carried over and only the code is replaced.
 # ================================================================
 
+# `sh setup_time_machine.sh` runs dash, which cannot run this script (no
+# hidden prompt, no arrays). Start again under bash, whatever it was run with.
+if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+
 # No 'set -e' — non-critical steps must not abort the install.
 # Critical failures are checked explicitly with if/exit blocks.
 
@@ -88,6 +92,10 @@ if [ "$(curl -s -o /dev/null -m 10 -w "%{http_code}" "$REPO_URL")" != "200" ]; t
     if [ -z "$GH_TOKEN" ]; then
         read -r -s -p "This repository is private. GitHub token: " GH_TOKEN < /dev/tty
         echo ""
+    fi
+    if [ -z "$GH_TOKEN" ]; then
+        echo "❌ ERROR: no token entered. Nothing was changed. Aborting."
+        exit 1
     fi
     if [ "$(curl -s -o /dev/null -m 10 -w "%{http_code}" -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/${REPO_URL#https://github.com/}")" != "200" ]; then
