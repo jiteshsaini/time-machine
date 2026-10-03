@@ -21,9 +21,13 @@
  * No URL of its own.
  */
 
-// Application name
+// Application name — the app's folder under the web root, taken from where
+// this code sits rather than fixed. Each copy then works on its own images/,
+// trash/ and txt/: a development checkout at /var/www/html/tm plays with its
+// sample albums and can never touch the library installed at
+// /var/www/html/time_machine.
 global $appName;
-$appName = "time_machine";
+$appName = basename(dirname(__DIR__));
 
 // ─── Resize batch tuning ─────────────────────────────────────────────────────
 // RESIZE_MAX_RECURSIVE — hard cap on the recursive image count a single
