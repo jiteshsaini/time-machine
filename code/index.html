@@ -72,6 +72,26 @@
             background-color: rgba(255, 255, 255, 0.30);
         }
 
+        /* Close-browser button — its own pill in the top-right corner, away
+           from the playback controls, fading in and out with them. Red while
+           waiting for the confirming second tap. */
+        #close-btn {
+            position: fixed;
+            top: 22px;
+            right: 22px;
+            padding: 15px 20px;
+            background-color: rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            opacity: 0;
+            transition: opacity 0.25s ease, background-color 0.15s ease;
+            z-index: 20;
+        }
+        body.controls-visible #close-btn { opacity: 1; }
+        #close-btn:hover { background-color: rgba(255, 255, 255, 0.18); }
+        #close-btn.armed,
+        #close-btn.armed:hover { background-color: rgba(200, 40, 40, 0.85); }
+
         /* Camera-style date overlay (bottom-right). Hidden until enabled. */
         #date-overlay {
             position: fixed;
@@ -107,6 +127,9 @@
         <button class="control-btn" id="pauseButton" onclick="togglePause()" aria-label="Pause">&#9208;</button>
         <button class="control-btn" id="next-btn" onclick="nextImage()" aria-label="Next">&#10095;</button>
     </div>
+
+    <!-- Close the kiosk browser — top-right corner, shown only on the Pi itself. -->
+    <button class="control-btn" id="close-btn" onclick="closeBrowser()" aria-label="Close browser" hidden>&#10005;</button>
 
     <script>
         // Auto-hide controls: show all three control buttons when the user
@@ -382,6 +405,40 @@
                 slideshowInterval = setInterval(nextImage, delay * 1000);
                 pauseButton.innerHTML = "&#9208;";
             }
+        }
+
+        /**
+         * Close the kiosk browser (drops to the desktop). Works without any
+         * network because the kiosk loads this page from the Pi itself. The
+         * button is shown only there — a phone or laptop viewing the slideshow
+         * must not be able to close the TV's browser. First tap arms the
+         * button, a second tap within 3 s confirms.
+         */
+        var closeArmTimer = null;
+        function closeBrowser() {
+            var btn = document.getElementById("close-btn");
+            if (!btn.classList.contains("armed")) {
+                btn.classList.add("armed");
+                btn.innerHTML = "Close?";
+                closeArmTimer = setTimeout(disarmClose, 3000);
+                return;
+            }
+            clearTimeout(closeArmTimer);
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) disarmClose();   // still here → it didn't close
+            };
+            xhr.open("POST", "util/system_commands.php", true);
+            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+            xhr.send("action=closeBrowser");
+        }
+        function disarmClose() {
+            var btn = document.getElementById("close-btn");
+            btn.classList.remove("armed");
+            btn.innerHTML = "&#10005;";
+        }
+        if (["127.0.0.1", "localhost", "[::1]"].indexOf(location.hostname) !== -1) {
+            document.getElementById("close-btn").hidden = false;
         }
 
         /**
