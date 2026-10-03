@@ -12,7 +12,13 @@ images/private/
 trash/
 code/txt/*.log
 code/txt/*.json
+code/txt/current_playlist.txt
 **/.resize_progress.json
+
+# Syncthing (keeps a copy of the library on a phone)
+.stfolder
+.stignore
+.stversions
 
 # Optional
 *.log

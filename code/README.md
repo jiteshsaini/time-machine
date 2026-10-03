@@ -26,12 +26,14 @@ Designed to run on a small home server (Raspberry Pi, NAS, old laptop) and drive
 - **PHP 7.4 or newer** (uses arrow functions and `??`).
 - **Apache** (or any PHP-capable web server) serving the `code/` directory as a web root or sub-path.
 - **Python 3** with `Pillow` (`PIL`) and `piexif`, used by the resize / crop / rotate utilities.
-- **`sudo`** on the server account that runs PHP — `img_resize.py` runs `sudo chmod -R 777` to normalize permissions. Configure `sudoers` accordingly or remove that line if your setup doesn't need it.
+- **`sudo`** on the server account that runs PHP — `img_resize.py` runs `sudo chmod -R 777` to normalize permissions, and crop / rotate / resize run their Python as root so they can put back each photo's original modified date (only a file's owner or root may set it). Configure `sudoers` accordingly.
 - A modern browser (Chromium / Firefox / Safari) for both the slideshow viewer and management UI.
 
 ---
 
 ## Install
+
+On a Raspberry Pi, `install.sh` at the top of the repository does all of this — Apache, PHP, the Python libraries, the kiosk browser, the Samba share and the code. Run it with `sudo bash install.sh`. Otherwise, by hand:
 
 1. Drop the project on your server so the web root sees three folders side-by-side:
 
@@ -41,13 +43,13 @@ Designed to run on a small home server (Raspberry Pi, NAS, old laptop) and drive
    <docroot>/time_machine/trash/     ← auto-created when first item is trashed
    ```
 
-   The folder name `time_machine` is configurable in `code/var.php` via `$appName`.
+   The folder name is not fixed: `code/var.php` takes `$appName` from the folder the code sits in.
 
 2. Make sure PHP can read `code/` and read/write `code/txt/`, plus read/write/move files in `images/` and `trash/`.
 
-3. Install Python dependencies on the server:
+3. Install Python dependencies on the server (Debian / Raspberry Pi OS packages — recent releases block a system-wide `pip3 install`):
    ```
-   pip3 install Pillow piexif
+   sudo apt install python3-pil python3-piexif
    ```
 
 4. **Slideshow URL** (point your Pi's kiosk browser at):
@@ -109,7 +111,7 @@ With one exception:
 Everything tunable lives in `code/var.php`. Key knobs:
 
 ```php
-$appName = "time_machine";          // your folder name under docroot
+$appName = basename(dirname(__DIR__));  // the app's folder under docroot
 
 define('RESIZE_MAX_RECURSIVE', 5000);  // max images per Resize session
 define('RESIZE_BATCH_SIZE',    200);   // images processed per "Resize next" click
@@ -247,10 +249,29 @@ The PHP/Python source code is just files — back up `code/` if you've made loca
 - All these operations involve PHP renaming/moving files. The PHP process must own (or have write access to) `images/` and `trash/`. Most common fix: `chmod -R 775 images/ trash/` and ensure your web server user is in the owning group.
 
 **Python crop/resize/rotate fails silently**
-- Check `pip3 list | grep -i pillow` — Pillow + piexif must be installed for the user PHP runs `python3` as. Run `python3 code/util/img_resize.py /full/path/to/folder` from a shell as the same user to surface errors directly.
+- Check `dpkg -l python3-pil python3-piexif` — Pillow + piexif must be installed system-wide, since the scripts run as root via `sudo python3`. Run `python3 code/util/img_resize.py /full/path/to/folder` from a shell as the same user to surface errors directly.
 
 **Trash count never goes down even after permanent delete**
 - We're about to introduce a count cache. If you see stale counts after `txt/count_cache.json` exists, delete it manually — the next page load will rebuild.
+
+---
+
+## Development
+
+On the Pi the app lives in two folders, never one:
+
+| Folder | What it is |
+|---|---|
+| `/var/www/html/time_machine` | **The install** — what the kiosk shows, with the real library in `images/`. Put there by `install.sh`, no `.git`. Never edit here. |
+| `/var/www/html/tm` | **The checkout** — a git clone where you edit, commit and push. Served at `http://<pi>/tm/code/`, it works on its own `images/` (the sample albums), so testing can never touch the library. |
+
+The workflow:
+
+1. Edit and test in `/var/www/html/tm`.
+2. Commit and push from there.
+3. Update the install: `sudo bash install.sh --code-only` fetches the new code from GitHub and carries the photos, the trash and the settings over.
+
+Optional: `install_syncthing.sh` sets up Syncthing to keep a copy of the library on a phone. `--restore <dir>` reuses an identity saved from a previous card, so the phone stays paired.
 
 ---
 
