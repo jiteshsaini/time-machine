@@ -263,7 +263,7 @@ On the Pi the app lives in two folders, never one:
 | Folder | What it is |
 |---|---|
 | `/var/www/html/time_machine` | **The install** — what the kiosk shows, with the real library in `images/`. Put there by `setup_time_machine.sh`, no `.git`. Never edit here. |
-| `/var/www/html/tm` | **The checkout** — a git clone where you edit, commit and push. Served at `http://<pi>/tm/code/`, it works on its own `images/` (the sample albums), so testing can never touch the library. |
+| `/var/www/html/tm` | **The checkout** — a git clone where you edit, commit and push. Served at `http://<pi>/tm/code/`, it works on its own `images/` (only `Sample_Albums/`), so testing can never touch the library. |
 
 The workflow:
 
@@ -272,6 +272,18 @@ The workflow:
 3. Update the install: `sudo bash setup_time_machine.sh --code-only` fetches the new code from GitHub and carries the photos, the trash and the settings over.
 
 Optional: `setup_syncthing.sh` sets up Syncthing to keep a copy of the library on a phone. `--restore <dir>` reuses an identity saved from a previous card, so the phone stays paired.
+
+`images/Sample_Albums/` holds three small demo albums so a new install has something to show. It is the only part of `images/` in the repository: `.gitignore` excludes everything else, whatever your own folders are called.
+
+The installer runs unattended. For a private repository it asks for a GitHub token once, at the start; set `GH_TOKEN` beforehand to skip even that.
+
+### Protecting the Samba share
+
+The installer shares `/var/www/html` on the network without a password, so any device on your Wi-Fi can add or delete photos. To require a login instead:
+
+1. In `/etc/samba/smb.conf`, under `[SharedFolder]`, set `guest ok = no` and `public = no`, and add `valid users = pi`.
+2. Give the user a Samba password: `sudo smbpasswd -a pi`
+3. `sudo systemctl restart smbd`
 
 ---
 

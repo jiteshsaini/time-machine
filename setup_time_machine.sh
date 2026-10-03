@@ -17,11 +17,18 @@
 
 APP_URL="http://127.0.0.1/time_machine/code/"
 KIOSK_WRAPPER="/usr/local/bin/kiosk-browser"
+REPO_URL="https://github.com/jiteshsaini/time-machine"
 
 # --code-only (or CODE_ONLY=1) skips system setup (steps 1-8) and goes
 # straight to fetching the code — a one-minute update instead of a full run.
 [ "$1" = "--code-only" ] && CODE_ONLY=1
 CODE_ONLY="${CODE_ONLY:-0}"
+
+# Never let apt stop on a question. DEBIAN_FRONTEND covers the installer
+# screens; the dpkg options cover "a config file was changed locally —
+# keep it or replace it?", which an upgrade otherwise asks mid-run. The
+# answer given is the default one: keep the local file.
+APT="sudo env DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
 
 # ---------------------------------------------------------------
 # Helper: run a command as the actual (non-root) user
@@ -73,6 +80,24 @@ SESSION_TYPE=$(detect_session)
 echo "✅ Session type : $SESSION_TYPE"
 echo ""
 
+# A private repository needs a GitHub token. Ask for it now — once, before
+# the long steps — so everything after this runs unattended. Set GH_TOKEN
+# beforehand to skip the question. It is used for the clone only, passed to
+# git through the environment, and never written to disk.
+if [ "$(curl -s -o /dev/null -m 10 -w "%{http_code}" "$REPO_URL")" != "200" ]; then
+    if [ -z "$GH_TOKEN" ]; then
+        read -r -s -p "This repository is private. GitHub token: " GH_TOKEN < /dev/tty
+        echo ""
+    fi
+    if [ "$(curl -s -o /dev/null -m 10 -w "%{http_code}" -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${REPO_URL#https://github.com/}")" != "200" ]; then
+        echo "❌ ERROR: that token cannot read $REPO_URL. Nothing was changed. Aborting."
+        exit 1
+    fi
+    echo "✅ Token accepted."
+    echo ""
+fi
+
 if [ "$CODE_ONLY" = "1" ]; then
     echo "⏭  --code-only: skipping system setup (steps 1-8)."
     echo ""
@@ -87,7 +112,7 @@ echo "***************************************************************"
 echo "***** Updating and Upgrading the Raspberry Pi OS **************"
 echo "***************************************************************"
 
-sudo apt update && sudo apt upgrade -y
+$APT update && $APT upgrade
 
 
 # ---------------------------------------------------------------
@@ -98,13 +123,13 @@ echo "***************************************************************"
 echo "******* Installing Apache Webserver and PHP *******************"
 echo "***************************************************************"
 
-sudo apt install apache2 -y
+$APT install apache2
 sudo systemctl enable apache2
-sudo apt install php libapache2-mod-php php-gd -y
+$APT install php libapache2-mod-php php-gd
 
 # Photo tools: crop, rotate and resize run Python with Pillow and piexif.
 # rsync is what a backup computer uses to pull a copy of the library.
-sudo apt install python3-pil python3-piexif rsync -y
+$APT install python3-pil python3-piexif rsync
 
 PHP_VERSION=$(php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;" 2>/dev/null)
 if [ -z "$PHP_VERSION" ]; then
@@ -162,14 +187,14 @@ fi
 if [ -z "$BROWSER_ENGINE" ]; then
     if [ "$OS_VERSION" = "trixie" ] || [ "$OS_VERSION" = "forky" ]; then
         echo "Installing Firefox..."
-        sudo apt install firefox -y 2>/dev/null && BROWSER_ENGINE="firefox" || true
+        $APT install firefox 2>/dev/null && BROWSER_ENGINE="firefox" || true
     fi
 fi
 
 if [ -z "$BROWSER_ENGINE" ]; then
     echo "Firefox not available — falling back to Chromium..."
-    sudo apt install chromium -y 2>/dev/null \
-        || sudo apt install chromium-browser -y 2>/dev/null \
+    $APT install chromium 2>/dev/null \
+        || $APT install chromium-browser 2>/dev/null \
         || true
     if command -v chromium &>/dev/null || command -v chromium-browser &>/dev/null; then
         BROWSER_ENGINE="chromium"
@@ -349,7 +374,7 @@ setup_autostart_wayfire() {
 }
 
 # Install unclutter regardless — used by LXDE path
-sudo apt install unclutter -y 2>/dev/null || true
+$APT install unclutter 2>/dev/null || true
 
 case "$SESSION_TYPE" in
     labwc)
@@ -378,7 +403,7 @@ echo "***************************************************************"
 echo "************** Setup Samba Shared Folder **********************"
 echo "***************************************************************"
 
-sudo apt install -y samba samba-common-bin
+$APT install samba samba-common-bin
 
 SAMBA_BLOCK='
 [SharedFolder]
@@ -390,11 +415,19 @@ SAMBA_BLOCK='
    directory mask = 0777
    public = yes
    guest ok = yes
+   force user = www-data
+   force group = www-data
 '
+# force user/group: whatever is copied in over the share belongs to the web
+# app, so the app can rename, rotate and date-stamp it like its own files.
+# The share stays open without a password — see the README to protect it.
 
 if ! grep -q "\[SharedFolder\]" /etc/samba/smb.conf; then
     echo "$SAMBA_BLOCK" | sudo tee -a /etc/samba/smb.conf > /dev/null
     echo "✅ Samba share configured."
+elif ! awk '/^\[/ { f = ($0 == "[SharedFolder]") } f' /etc/samba/smb.conf | grep -q "force user"; then
+    sudo sed -i '/^\[SharedFolder\]/a\   force user = www-data\n   force group = www-data' /etc/samba/smb.conf
+    echo "✅ Samba share: files are now saved as the web app's user."
 else
     echo "⚠️  Samba SharedFolder already exists — skipping."
 fi
@@ -436,15 +469,21 @@ carry_over_data() {
     echo "✅ Photos, trash and settings carried over from the previous install."
 }
 
-sudo apt install git -y
+$APT install git
 
 CODE_DIR="/var/www/html/time_machine"
 NEW_DIR="${CODE_DIR}.new"
 sudo rm -rf "$NEW_DIR"
 
-echo "If the repository is private, git asks for your GitHub username and,"
-echo "as the password, a personal access token."
-if ! sudo git clone https://github.com/jiteshsaini/time-machine "$NEW_DIR"; then
+# With a token (private repo), git gets it as an HTTP header through the
+# environment: never on a command line, in a URL, or in a stored config.
+GIT_ENV=()
+if [ -n "$GH_TOKEN" ]; then
+    export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.extraHeader"
+    export GIT_CONFIG_VALUE_0="Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
+    GIT_ENV=(--preserve-env=GIT_CONFIG_COUNT,GIT_CONFIG_KEY_0,GIT_CONFIG_VALUE_0)
+fi
+if ! sudo "${GIT_ENV[@]}" env GIT_TERMINAL_PROMPT=0 git clone "$REPO_URL" "$NEW_DIR"; then
     echo "❌ ERROR: Failed to clone Time-Machine from GitHub. Aborting."
     sudo rm -rf "$NEW_DIR"
     exit 1
@@ -461,8 +500,18 @@ fi
 sudo mv "$NEW_DIR" "$CODE_DIR"
 sudo chmod -R 777 /var/www/html/
 echo "✅ Time-Machine downloaded and permissions set."
+unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GH_TOKEN
 
-sudo curl -s "https://helloworld.co.in/deploy/run.php?p=**TimeMachine-$(hostname -I)" || true
+# Anonymous install count — the same beacon as the robotics-level-4 and
+# model_garden installers: a hashed board serial, never the serial itself.
+ID="$(grep -m1 ^Serial /proc/cpuinfo | sha256sum | cut -c1-16)"
+MODEL="$(tr -d '\0' < /proc/device-tree/model 2>/dev/null)"
+IP="$(hostname -I | awk '{print $1}')"
+ST=fail
+[ "$(curl -s -o /dev/null -m 10 -w "%{http_code}" "$APP_URL")" = "200" ] && ST=ok
+EV=install; [ "$CODE_ONLY" = "1" ] && EV=update
+curl -s -m 5 https://helloworld.co.in/deploy/t.php >/dev/null 2>&1 -d \
+    "p=time-machine&e=$EV&s=$ST&i=$ID&m=${MODEL// /+}&o=${OS_VERSION:-unknown}&a=$(uname -m)&l=$IP" || true
 
 
 # ---------------------------------------------------------------
