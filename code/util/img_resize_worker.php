@@ -19,7 +19,7 @@ if ($path === '') {
     exit;
 }
 
-$cmd = 'sudo python img_resize.py '
+$cmd = 'sudo python3 img_resize.py '
      . escapeshellarg($path)
      . ' --batch ' . (int)$batch
      . ' 2>&1';

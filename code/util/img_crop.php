@@ -43,7 +43,8 @@ $w = (int) $_POST['width'];
 $h = (int) $_POST['height'];
 
 $script = __DIR__ . '/img_crop.py';
-$cmd = 'python3 ' . escapeshellarg($script) . ' '
+// Run as root so the original mtime can be put back — see img_rot.php.
+$cmd = 'sudo python3 ' . escapeshellarg($script) . ' '
      . escapeshellarg($real) . ' '
      . escapeshellarg($x) . ' ' . escapeshellarg($y) . ' '
      . escapeshellarg($w) . ' ' . escapeshellarg($h) . ' 2>&1';
