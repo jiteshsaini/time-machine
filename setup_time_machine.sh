@@ -5,8 +5,8 @@
 # Browser: Firefox (primary, Trixie) / Chromium (fallback, Bookworm)
 # Fully automated — no user intervention required
 #
-#   sudo bash install.sh               fresh card: set up everything
-#   sudo bash install.sh --code-only   update the app's code only
+#   sudo bash setup_time_machine.sh               fresh card: set up everything
+#   sudo bash setup_time_machine.sh --code-only   update the app's code only
 #
 # Re-running it on an existing install is safe: the photos, the trash
 # and the app's settings are carried over and only the code is replaced.

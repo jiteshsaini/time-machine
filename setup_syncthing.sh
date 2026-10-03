@@ -1,10 +1,10 @@
 #!/bin/bash
 # ================================================================
-# Syncthing for Time-Machine — optional, run after install.sh
+# Syncthing for Time-Machine — optional, run after setup_time_machine.sh
 # Keeps a copy of the photo library on a phone or another computer.
 #
-#   sudo bash install_syncthing.sh                    new device identity
-#   sudo bash install_syncthing.sh --restore <dir>    reuse a saved one
+#   sudo bash setup_syncthing.sh                    new device identity
+#   sudo bash setup_syncthing.sh --restore <dir>    reuse a saved one
 #
 # <dir> holds cert.pem, key.pem and config.xml saved from the previous
 # card's Syncthing config folder. Putting them back before the first
@@ -15,7 +15,7 @@
 # first see the library complete, not half-copied.
 # ================================================================
 
-# Detect actual non-root user (same rule as install.sh)
+# Detect actual non-root user (same rule as setup_time_machine.sh)
 if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
     ACTUAL_USER="$SUDO_USER"
 else

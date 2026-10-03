@@ -33,7 +33,7 @@ Designed to run on a small home server (Raspberry Pi, NAS, old laptop) and drive
 
 ## Install
 
-On a Raspberry Pi, `install.sh` at the top of the repository does all of this — Apache, PHP, the Python libraries, the kiosk browser, the Samba share and the code. Run it with `sudo bash install.sh`. Otherwise, by hand:
+On a Raspberry Pi, `setup_time_machine.sh` at the top of the repository does all of this — Apache, PHP, the Python libraries, the kiosk browser, the Samba share and the code. Run it with `sudo bash setup_time_machine.sh`. Otherwise, by hand:
 
 1. Drop the project on your server so the web root sees three folders side-by-side:
 
@@ -262,16 +262,16 @@ On the Pi the app lives in two folders, never one:
 
 | Folder | What it is |
 |---|---|
-| `/var/www/html/time_machine` | **The install** — what the kiosk shows, with the real library in `images/`. Put there by `install.sh`, no `.git`. Never edit here. |
+| `/var/www/html/time_machine` | **The install** — what the kiosk shows, with the real library in `images/`. Put there by `setup_time_machine.sh`, no `.git`. Never edit here. |
 | `/var/www/html/tm` | **The checkout** — a git clone where you edit, commit and push. Served at `http://<pi>/tm/code/`, it works on its own `images/` (the sample albums), so testing can never touch the library. |
 
 The workflow:
 
 1. Edit and test in `/var/www/html/tm`.
 2. Commit and push from there.
-3. Update the install: `sudo bash install.sh --code-only` fetches the new code from GitHub and carries the photos, the trash and the settings over.
+3. Update the install: `sudo bash setup_time_machine.sh --code-only` fetches the new code from GitHub and carries the photos, the trash and the settings over.
 
-Optional: `install_syncthing.sh` sets up Syncthing to keep a copy of the library on a phone. `--restore <dir>` reuses an identity saved from a previous card, so the phone stays paired.
+Optional: `setup_syncthing.sh` sets up Syncthing to keep a copy of the library on a phone. `--restore <dir>` reuses an identity saved from a previous card, so the phone stays paired.
 
 ---
 
