@@ -5,8 +5,10 @@
 # Ignore Claude files
 .claude
 
-# Ignore private images entirely
-images/private/
+# Only the sample albums belong in the repo — never anyone's own photos,
+# whatever their folders are called
+images/*
+!images/Sample_Albums/
 
 # Ignore runtime state
 trash/
