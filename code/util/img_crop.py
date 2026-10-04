@@ -25,6 +25,40 @@ except ImportError:
     piexif = None
 
 
+def save_keeping_dates(image, path, **save_kwargs):
+    """Replace the file at `path` with `image`, keeping its dates and mode.
+
+    Only a file's owner may set its mtime, and a photo is often owned by
+    someone other than the web server. So the picture is written to a hidden
+    temporary file beside the photo - which we do own - given the photo's
+    timestamps and mode, and swapped in. The swap is a single step, so an
+    interrupted save leaves the original untouched. Needs write access to
+    the folder; raises OSError if any step fails.
+    """
+    st = os.stat(path)
+    mode = st.st_mode & 0o7777
+    if st.st_uid != os.geteuid():
+        # The new file is ours, not the old owner's - give group and others
+        # what the owner had, so whoever owned the photo can still use it.
+        owner_bits = (mode >> 6) & 7
+        mode |= owner_bits << 3 | owner_bits
+    folder, name = os.path.split(path)
+    # Leading dot: the slideshow and the sync tools skip hidden files, and
+    # the name keeps its extension so PIL still picks the right format.
+    tmp = os.path.join(folder, '.tmp-' + name)
+    try:
+        image.save(tmp, **save_kwargs)
+        os.chmod(tmp, mode)
+        os.utime(tmp, ns=(st.st_atime_ns, st.st_mtime_ns))
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def crop_image(path, x, y, w, h):
     if not os.path.isfile(path):
         sys.stderr.write(f"Not a file: {path}\n")
@@ -59,9 +93,6 @@ def crop_image(path, x, y, w, h):
 
     cropped = image.crop((x, y, x + w, y + h))
 
-    st = os.stat(path)
-    orig_atime, orig_mtime = st.st_atime, st.st_mtime
-
     save_kwargs = {}
     if img_format in ("JPEG", "JPG"):
         save_kwargs.update({"quality": 92, "optimize": True})
@@ -82,15 +113,10 @@ def crop_image(path, x, y, w, h):
         save_kwargs["icc_profile"] = icc_profile
 
     try:
-        cropped.save(path, **save_kwargs)
+        save_keeping_dates(cropped, path, **save_kwargs)
     except OSError as e:
         sys.stderr.write(f"Save failed: {e}\n")
         return 5
-
-    try:
-        os.utime(path, (orig_atime, orig_mtime))
-    except OSError:
-        pass
 
     print(f"Cropped to {w}x{h} at ({x},{y})")
     return 0

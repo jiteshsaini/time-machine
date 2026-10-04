@@ -25,11 +25,9 @@ if (!is_file($sourcePath)) {
 }
 
 $script = __DIR__ . '/img_rot.py';
-// Run as root: only a file's owner or root may set its mtime back, and most
-// photos are not owned by www-data (anything copied in over Samba belongs to
-// nobody). Without sudo the date restore fails silently and the photo is
-// stamped with today's date.
-$cmd    = 'sudo python3 ' . escapeshellarg($script) . ' ' . escapeshellarg($sourcePath) . ' 2>&1';
+// No root needed: the script writes a new file beside the photo, gives it the
+// photo's dates and swaps it in, so it works whoever owns the photo.
+$cmd    = 'python3 ' . escapeshellarg($script) . ' ' . escapeshellarg($sourcePath) . ' 2>&1';
 
 $output = [];
 $rc     = 0;

@@ -50,6 +50,54 @@ def write_progress(progress_file, payload):
         pass  # progress is best-effort; never block the resize on it
 
 
+def save_keeping_dates(image, path, **save_kwargs):
+    """Replace the file at `path` with `image`, keeping its dates and mode.
+
+    Only a file's owner may set its mtime, and a photo is often owned by
+    someone other than the web server. So the picture is written to a hidden
+    temporary file beside the photo - which we do own - given the photo's
+    timestamps and mode, and swapped in. The swap is a single step, so an
+    interrupted save leaves the original untouched. Needs write access to
+    the folder; raises OSError if any step fails.
+    """
+    st = os.stat(path)
+    mode = st.st_mode & 0o7777
+    if st.st_uid != os.geteuid():
+        # The new file is ours, not the old owner's - give group and others
+        # what the owner had, so whoever owned the photo can still use it.
+        owner_bits = (mode >> 6) & 7
+        mode |= owner_bits << 3 | owner_bits
+    folder, name = os.path.split(path)
+    # Leading dot: the slideshow and the sync tools skip hidden files, and
+    # the name keeps its extension so PIL still picks the right format.
+    tmp = os.path.join(folder, '.tmp-' + name)
+    try:
+        image.save(tmp, **save_kwargs)
+        os.chmod(tmp, mode)
+        os.utime(tmp, ns=(st.st_atime_ns, st.st_mtime_ns))
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def open_permissions(root):
+    """Best-effort: make everything we own under `root` writable by all, as
+    the installer does. Files owned by someone else are left as they are."""
+    for dirpath, dirnames, filenames in os.walk(root):
+        for name in [''] + dirnames + filenames:
+            p = os.path.join(dirpath, name)
+            if os.path.islink(p):
+                continue
+            try:
+                os.chmod(p, 0o777)
+            except OSError:
+                pass
+
+
 def is_junk(name):
     return name in JUNK_NAMES or name.startswith(JUNK_PREFIXES)
 
@@ -95,7 +143,7 @@ def collect_candidates(root):
 
 
 def resize_one(file_path):
-    """Resize a single file in place. Returns (status, info_str)."""
+    """Resize a single file, replacing it. Returns (status, info_str)."""
     # Replace spaces in the basename
     folder = os.path.dirname(file_path)
     new_name = re.sub(r'\s+', '_', os.path.basename(file_path))
@@ -125,10 +173,6 @@ def resize_one(file_path):
         except OSError:
             return ('error', f"corrupted, could not delete: {os.path.basename(file_path)}")
 
-    # Capture timestamps before save.
-    st = os.stat(file_path)
-    orig_atime, orig_mtime = st.st_atime, st.st_mtime
-
     width, height = image.size
     if width <= MAX_DIMENSION and height <= MAX_DIMENSION:
         return ('skip', f"{os.path.basename(file_path)} already within limits")
@@ -149,15 +193,9 @@ def resize_one(file_path):
         save_kwargs['icc_profile'] = icc_profile
 
     try:
-        image.save(file_path, **save_kwargs)
+        save_keeping_dates(image, file_path, **save_kwargs)
     except OSError as e:
         return ('error', f"save failed for {os.path.basename(file_path)}: {e}")
-
-    # Restore mtime/atime
-    try:
-        os.utime(file_path, (orig_atime, orig_mtime))
-    except OSError:
-        pass
 
     size_after = os.path.getsize(file_path)
     return ('resized',
@@ -171,7 +209,7 @@ def main(folder_path, batch_size):
         return 1
 
     # Best-effort permissions normalization (matches old script behavior).
-    os.system(f"sudo chmod -R 777 {folder_path}")
+    open_permissions(folder_path)
 
     pf = progress_path(folder_path)
 
