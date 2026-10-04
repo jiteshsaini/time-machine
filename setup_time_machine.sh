@@ -264,6 +264,17 @@ launch_chromium() {
         --start-fullscreen
 }
 
+# A pointer that has never moved stays on screen: the browser only takes over
+# the cursor - and can then hide it - after the first pointer movement. So push
+# it into the bottom-right corner once the browser is up, twice in case the Pi
+# is slow to start. Wayland desktops only; on X11 unclutter does the hiding.
+park_pointer() {
+    command -v wlrctl &>/dev/null || return
+    [ -n "$WAYLAND_DISPLAY" ] || return
+    ( sleep 10; wlrctl pointer move 5000 5000; sleep 20; wlrctl pointer move 5000 5000 ) &
+}
+
+park_pointer
 if command -v firefox &>/dev/null; then
     launch_firefox
 else
@@ -306,8 +317,10 @@ fi
 #   So the user file must contain ONLY our kiosk-browser line.
 #   Putting system entries here causes them to run TWICE → two bars.
 #
-#   Cursor hide: now handled in-page (CSS in the slideshow), not
-#   here — labwc/Wayland has no working cursor-hide setting.
+#   Cursor hide: in-page (CSS in the slideshow) — labwc/Wayland has
+#   no idle cursor-hide setting. The page can only hide a pointer
+#   that has moved at least once, so the kiosk wrapper nudges it
+#   into a corner after the browser starts (wlrctl).
 #
 # LXDE (Bookworm/X11):
 #   The user autostart REPLACES the system one.
@@ -383,6 +396,8 @@ setup_autostart_wayfire() {
 
 # Install unclutter regardless — used by LXDE path
 $APT install unclutter 2>/dev/null || true
+# wlrctl moves the pointer on Wayland desktops — used by the kiosk wrapper
+$APT install wlrctl 2>/dev/null || true
 
 case "$SESSION_TYPE" in
     labwc)
