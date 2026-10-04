@@ -119,15 +119,12 @@ Your photos, the trash and your settings are kept; only the app is replaced.
 - Shared `/var/www/html` on the network as `SharedFolder`, without a password.
 - Downloaded the app into `/var/www/html/time_machine`.
 
-## Optional: a copy of your photos on your phone
+## A copy of your photos on your phone
 
-`setup_syncthing.sh` installs [Syncthing](https://syncthing.net/), which keeps a copy of
-the library on a phone (with the Syncthing-Fork app on Android) or another computer, and
-keeps it up to date over your Wi-Fi.
-
-```bash
-sudo bash /var/www/html/time_machine/setup_syncthing.sh
-```
+Because the library is just folders of files, any file-sync tool can keep a copy of it on a
+phone or another computer. [Syncthing](https://syncthing.net/) works well: it is free, runs
+on the Pi (`sudo apt install syncthing`) and on Android (the Syncthing-Fork app), and syncs
+over your own Wi-Fi.
 
 Share the folder `/var/www/html/time_machine/images` from the Pi as **Send Only**, and add
 it on the phone as **Receive Only**, so the phone can never change the Pi's photos. Add the
