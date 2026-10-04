@@ -428,7 +428,7 @@ SAMBA_BLOCK='
 '
 # force user/group: whatever is copied in over the share belongs to the web
 # app, so the app can rename, rotate and date-stamp it like its own files.
-# The share stays open without a password — see the README to protect it.
+# The share stays open without a password.
 
 if ! grep -q "\[SharedFolder\]" /etc/samba/smb.conf; then
     echo "$SAMBA_BLOCK" | sudo tee -a /etc/samba/smb.conf > /dev/null
