@@ -122,8 +122,9 @@ Your photos, the trash and your settings are kept; only the app is replaced.
 
 - Updated the system and installed Apache, PHP, and the Python imaging libraries (Pillow,
   piexif) the photo tools use.
-- Gave the web server passwordless `sudo`: the photo tools run as root so they can put
-  back each photo's date, and the management page can restart or shut down the Pi.
+- Gave your desktop user passwordless `sudo`, and allowed the web server to run six
+  commands as root and nothing else: closing the slideshow's browser, restarting the Pi and
+  shutting it down (`/etc/sudoers.d/time-machine`).
 - Installed Firefox (Chromium on older systems) and set the desktop to log in by itself and
   open the slideshow full screen — so a monitor plugged into the Pi just shows it.
 - Shared `/var/www/html` on the network as `SharedFolder`, without a password.

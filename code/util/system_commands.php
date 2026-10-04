@@ -19,8 +19,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if (!empty($resetStatus['chromium_running'])) $closed[] = 'Chromium';
         if (!empty($resetStatus['firefox_running']))  $closed[] = 'Firefox';
         $response['message'] = $closed
-            ? (implode(' & ', $closed) . ' closed and cache cleared.')
-            : 'No browser was running. Cache cleared.';
+            ? (implode(' & ', $closed) . ' closed.')
+            : 'No browser was running.';
     } else {
         http_response_code(400);
         echo json_encode(['status' => 'error', 'message' => 'Invalid action']);
@@ -37,6 +37,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
 // ============================
 // Utility Functions
+//
+// These are the only commands the app runs as root, and the installer's
+// sudo rule (/etc/sudoers.d/time-machine) allows exactly these, word for
+// word - change both together.
 // ============================
 
 function resetBrowser() {
@@ -54,18 +58,8 @@ function resetBrowser() {
     exec("sudo pkill -x chromium;         sudo pkill -x chromium-browser", $o1, $kc);
     exec("sudo pkill -x firefox;          sudo pkill -x firefox-esr",      $o2, $kf);
 
-    // ── Chromium: clear cache + crash/restore prompt state. ──
-    exec("sudo rm -rf /home/pi/.cache/chromium/*");
-    exec("sudo rm -f  /home/pi/.config/chromium/Default/Preferences");
-    exec("sudo rm -f  /home/pi/.config/chromium/Singleton*");
-
-    // ── Firefox: clear cache + session-restore prompt + stale profile locks.
-    //    Profile dirs are randomly named (xxxx.default-esr), hence the glob. ──
-    exec("sudo rm -rf /home/pi/.cache/mozilla/firefox/*");
-    exec("sudo rm -f  /home/pi/.mozilla/firefox/*/sessionstore.jsonlz4");
-    exec("sudo rm -rf /home/pi/.mozilla/firefox/*/sessionstore-backups/*");
-    exec("sudo rm -f  /home/pi/.mozilla/firefox/*/.parentlock");
-    exec("sudo rm -f  /home/pi/.mozilla/firefox/*/lock");
+    // Nothing to clear here: the kiosk launcher starts the browser with an
+    // empty profile every time.
 
     return [
         'chromium_running' => $chromiumRunning,
@@ -75,12 +69,12 @@ function resetBrowser() {
 
 
 function rebootSystem() {
-    resetBrowser(); // Clean up before reboot
+    resetBrowser(); // Close the browser first
     exec("sudo reboot > /dev/null 2>&1 &");
 }
 
 function shutdownSystem() {
-    resetBrowser(); // Clean up before shutdown
+    resetBrowser(); // Close the browser first
     exec("sudo shutdown -h now > /dev/null 2>&1 &");
 }
 ?>

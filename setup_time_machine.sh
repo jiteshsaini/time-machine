@@ -171,10 +171,29 @@ echo "***** Configuring Sudoers *************************************"
 echo "***************************************************************"
 
 SUDOERS_LINE1="$ACTUAL_USER ALL=(ALL) NOPASSWD: ALL"
-SUDOERS_LINE2="www-data ALL=(ALL) NOPASSWD: ALL"
 grep -qxF "$SUDOERS_LINE1" /etc/sudoers || echo "$SUDOERS_LINE1" | sudo tee -a /etc/sudoers > /dev/null
-grep -qxF "$SUDOERS_LINE2" /etc/sudoers || echo "$SUDOERS_LINE2" | sudo tee -a /etc/sudoers > /dev/null
-echo "✅ Sudoers updated."
+
+# The web app may run exactly these as root: closing the kiosk browser,
+# restarting the Pi, shutting it down (code/util/system_commands.php - change
+# both together). The rule is checked by visudo before it is put in place: a
+# broken file in sudoers.d would stop sudo working for everyone.
+PKILL=$(command -v pkill       || echo /usr/bin/pkill)
+REBOOT=$(command -v reboot     || echo /usr/sbin/reboot)
+SHUTDOWN=$(command -v shutdown || echo /usr/sbin/shutdown)
+SUDOERS_TMP=$(mktemp)
+cat > "$SUDOERS_TMP" << EOF
+# Time-Machine: what the web app may run as root. Nothing else.
+www-data ALL=(root) NOPASSWD: $PKILL -x firefox, $PKILL -x firefox-esr, $PKILL -x chromium, $PKILL -x chromium-browser, $REBOOT "", $SHUTDOWN -h now
+EOF
+if sudo visudo -cf "$SUDOERS_TMP" > /dev/null; then
+    sudo install -o root -g root -m 0440 "$SUDOERS_TMP" /etc/sudoers.d/time-machine
+    # Earlier versions of this script gave the web app every command.
+    sudo sed -i '/^www-data ALL=(ALL) NOPASSWD: ALL$/d' /etc/sudoers
+    echo "✅ Sudoers updated."
+else
+    echo "⚠️  Sudo rule for the web app not written — its close, restart and shut down buttons will not work."
+fi
+rm -f "$SUDOERS_TMP"
 
 
 # ---------------------------------------------------------------
@@ -229,12 +248,15 @@ sudo bash -c "cat > $KIOSK_WRAPPER" << 'WRAPPER_EOF'
 #!/bin/bash
 APP_URL="__APP_URL__"
 
+# The browser profile sits in the user's own cache folder and starts empty
+# every time. Not in /tmp: anyone may write there, so another account could
+# prepare the profile before the browser opens it. A fresh profile also has
+# no stale lock ("already running" after a power cut) and nothing to restore.
+PROFILE="$HOME/.cache/time-machine-kiosk"
+rm -rf "$PROFILE"
+mkdir -p -m 700 "$PROFILE"
+
 launch_firefox() {
-    PROFILE="/tmp/firefox-kiosk"
-    mkdir -p "$PROFILE"
-    # Remove stale lock files from unclean shutdown — without this
-    # Firefox shows "already running" error after a crash/power loss
-    rm -f "$PROFILE/lock" "$PROFILE/.parentlock"
     export MOZ_ENABLE_WAYLAND=1
     exec firefox \
         --no-remote \
@@ -243,8 +265,6 @@ launch_firefox() {
 }
 
 launch_chromium() {
-    PROFILE="/tmp/chromium-kiosk"
-    mkdir -p "$PROFILE"
     if command -v chromium &>/dev/null; then
         CHROMIUM_BIN="chromium"
     else
