@@ -344,23 +344,64 @@ function mgr_count_dir_images_raw($dir) {
     return $n;
 }
 
+/**
+ * Everything the pages show about a folder, from ONE walk of its tree:
+ *
+ *   play     images the slideshow would serve — nothing hidden (.*) or
+ *            skipped (_*) at any level below $dir
+ *   active   images not marked skipped below $dir (hidden ones included)
+ *   skipped  images that are, or sit inside something, marked skipped (_*)
+ *   bytes    size on disk of every file
+ *   subdirs  folders at any depth, hidden and skipped ones included
+ *   kids     direct subfolders that are not hidden
+ *
+ * The walk records the same numbers for every folder it passes through and
+ * keeps them until the request ends. A page that shows counts for a folder,
+ * for each of its subfolders and for the sidebar tree therefore reads the
+ * disk once, where separate counters used to walk the same tree once per
+ * number per folder (about eight full walks to open the top folder of a
+ * large library). Nothing is written to disk: the next request counts afresh.
+ */
+function mgr_folder_stats($dir) {
+    static $memo = [];
+    static $img_exts = ['gif','jpg','jpeg','png','bmp','ico','svg','webp','avif'];
+    $dir = rtrim($dir, '/');
+    if (isset($memo[$dir])) return $memo[$dir];
+    $s = ['play' => 0, 'active' => 0, 'skipped' => 0, 'bytes' => 0, 'subdirs' => 0, 'kids' => 0];
+    if (!is_dir($dir)) return $s;
+    foreach (scandir($dir) as $f) {
+        if ($f === '.' || $f === '..') continue;
+        $p      = $dir . '/' . $f;
+        $hidden = ($f[0] === '.');
+        $skip   = ($f[0] === '_');
+        if (is_file($p)) {
+            $s['bytes'] += filesize($p);
+            if (in_array(strtolower(pathinfo($f, PATHINFO_EXTENSION)), $img_exts)) {
+                if ($skip) $s['skipped']++; else $s['active']++;
+                if (!$hidden && !$skip) $s['play']++;
+            }
+        } elseif (is_dir($p)) {
+            $c = mgr_folder_stats($p);
+            $s['subdirs'] += 1 + $c['subdirs'];
+            $s['bytes']   += $c['bytes'];
+            if (!$hidden) $s['kids']++;
+            // Everything inside a skipped folder counts as skipped.
+            if ($skip) { $s['skipped'] += $c['active'] + $c['skipped']; }
+            else       { $s['active']  += $c['active']; $s['skipped'] += $c['skipped']; }
+            if (!$hidden && !$skip) $s['play'] += $c['play'];
+        }
+    }
+    return $memo[$dir] = $s;
+}
+
 // Counts images the slideshow will actually serve. Mirrors get_images.php:
 // skips hidden (.*) AND skipped (_*) names at every level — without this the
 // status bar / modal show a higher number than the slideshow actually plays.
 function mgr_count_dir_images($dir) {
-    static $exts = ['gif','jpg','jpeg','png','bmp','ico','svg','webp','avif'];
-    if (!is_dir($dir)) return 0;
-    // Skip the entire subtree if the root path is itself skipped (any segment
-    // begins with '_' or '.'), so counts match what get_images.php serves.
-    if (is_skipped_path($dir)) return 0;
-    $n = 0;
-    foreach (scandir($dir) as $f) {
-        if ($f === '.' || $f === '..' || $f[0] === '.' || $f[0] === '_') continue;
-        $full = $dir . '/' . $f;
-        if (is_dir($full)) { $n += mgr_count_dir_images($full); continue; }
-        if (is_file($full) && in_array(strtolower(pathinfo($f, PATHINFO_EXTENSION)), $exts)) $n++;
-    }
-    return $n;
+    // Nothing plays from a folder that is itself skipped (any segment of its
+    // path begins with '_' or '.'), so counts match what get_images.php serves.
+    if (!is_dir($dir) || is_skipped_path($dir)) return 0;
+    return mgr_folder_stats($dir)['play'];
 }
 
 /**
@@ -1758,24 +1799,9 @@ sweep_dead_paths_(state_file('starred_paths.txt'), 'is_file');
 // var.php so util/* endpoints can call them without pulling in this file.
 
 function countDirImagesSplit($dir, $inheritSkipped = false) {
-    if (!is_dir($dir)) return ['active' => 0, 'skipped' => 0];
-    static $img_exts = ['gif','jpg','jpeg','png','bmp','ico','svg','webp','avif'];
-    $active = 0; $skipped = 0;
-    foreach (scandir($dir) as $f) {
-        if ($f === '.' || $f === '..') continue;
-        $p = $dir . DIRECTORY_SEPARATOR . $f;
-        $thisSkipped = $inheritSkipped || is_skipped_name($f);
-        if (is_file($p)) {
-            if (in_array(strtolower(pathinfo($f, PATHINFO_EXTENSION)), $img_exts)) {
-                if ($thisSkipped) $skipped++; else $active++;
-            }
-        } elseif (is_dir($p)) {
-            $sub = countDirImagesSplit($p, $thisSkipped);
-            $active  += $sub['active'];
-            $skipped += $sub['skipped'];
-        }
-    }
-    return ['active' => $active, 'skipped' => $skipped];
+    $s = mgr_folder_stats($dir);
+    if ($inheritSkipped) return ['active' => 0, 'skipped' => $s['active'] + $s['skipped']];
+    return ['active' => $s['active'], 'skipped' => $s['skipped']];
 }
 
 /**
@@ -1797,25 +1823,12 @@ function mgr_human_size_($bytes) {
  * dir so callers don't need to guard.
  */
 function mgr_count_subdirs_recursive_($dir) {
-    if (!is_dir($dir)) return 0;
-    $n = 0;
-    foreach (@scandir($dir) ?: [] as $f) {
-        if ($f === '.' || $f === '..') continue;
-        $p = $dir . '/' . $f;
-        if (is_dir($p)) { $n++; $n += mgr_count_subdirs_recursive_($p); }
-    }
-    return $n;
+    return mgr_folder_stats($dir)['subdirs'];
 }
 
 function getDirectorySize($dir) {
     if (!is_dir($dir)) return false;
-    $size = 0;
-    foreach (scandir($dir) as $f) {
-        if ($f === '.' || $f === '..') continue;
-        $p = $dir . DIRECTORY_SEPARATOR . $f;
-        $size += is_file($p) ? filesize($p) : (getDirectorySize($p) ?: 0);
-    }
-    return $size;
+    return mgr_folder_stats($dir)['bytes'];
 }
 
 /**

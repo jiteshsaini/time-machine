@@ -139,12 +139,9 @@ function render_folder_tree_html_($absRoot, $pathPrefix, $currentPath, $existing
         $full     = $absRoot . '/' . $name;
         $fullPath = $pathPrefix . '/' . $name;
         $skipped  = ($name[0] === '_');
-        // Detect grandchildren without a full recurse — just one cheap scan.
-        $hasKids = false;
-        foreach (@scandir($full) ?: [] as $sub) {
-            if ($sub === '.' || $sub === '..' || $sub[0] === '.') continue;
-            if (is_dir($full . '/' . $sub)) { $hasKids = true; break; }
-        }
+        // Any subfolder to expand? Read from the shared folder walk, which
+        // the counts on this page use too.
+        $hasKids = mgr_folder_stats($full)['kids'] > 0;
         $isCurrent  = ($fullPath === $currentPath);
         $isAncestor = (strpos($currentPath . '/', $fullPath . '/') === 0);
 
