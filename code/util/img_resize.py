@@ -167,11 +167,9 @@ def resize_one(file_path):
         icc_profile = image.info.get('icc_profile')
         image = image.convert('RGB')
     except (UnidentifiedImageError, OSError) as e:
-        try:
-            os.remove(file_path)
-            return ('removed', f"corrupted, deleted: {os.path.basename(file_path)} ({e})")
-        except OSError:
-            return ('error', f"corrupted, could not delete: {os.path.basename(file_path)}")
+        # Never delete what we cannot read: it may be a photo that is still
+        # being copied in, or one worth restoring from a backup.
+        return ('error', f"cannot read, left in place: {os.path.basename(file_path)} ({e})")
 
     width, height = image.size
     if width <= MAX_DIMENSION and height <= MAX_DIMENSION:
@@ -232,7 +230,7 @@ def main(folder_path, batch_size):
         'remaining': initial_remaining,
     })
 
-    counters = {'resized': 0, 'skip': 0, 'removed': 0, 'error': 0}
+    counters = {'resized': 0, 'skip': 0, 'error': 0}
 
     for i, path in enumerate(batch):
         rel = os.path.relpath(path, folder_path)

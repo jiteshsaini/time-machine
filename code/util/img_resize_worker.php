@@ -19,6 +19,17 @@ if ($path === '') {
     exit;
 }
 
+// The path comes from the request, so check it: only folders inside this
+// app's images/ are resized.
+$real = realpath($path);
+$root = realpath(images_root());
+if ($real === false || $root === false || !is_dir($real)
+        || ($real !== $root && safe_under($real, $root) === false)) {
+    http_response_code(400);
+    echo 'Not a folder inside images.';
+    exit;
+}
+
 $cmd = 'python3 img_resize.py '
      . escapeshellarg($path)
      . ' --batch ' . (int)$batch
