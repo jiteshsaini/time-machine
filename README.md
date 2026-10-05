@@ -66,46 +66,44 @@ sudo reboot
 
 ## Run it
 
-**On any device** — open this in a browser on a laptop, tablet, phone or smart TV on the
-same network, and switch the browser to full screen:
-
-```
-http://<your-pi's-address>/time_machine/code/
-```
-
-It starts with the three sample albums that come with the app.
-
-**On a monitor attached to the Pi** — nothing to open: after the reboot the slideshow
-starts full screen by itself. Moving the mouse shows the controls; the ✕ in the top-right
-corner closes the slideshow (tap twice).
-
-**To curate**, open the management page on a phone or laptop:
+Open the Pi's address in a browser on any laptop, tablet, phone or smart TV on the same
+network:
 
 ```
 http://<your-pi's-address>/time_machine/
 ```
 
+<p align="center">
+   <img src="https://raw.githubusercontent.com/jiteshsaini/files/main/img/time-machine_home.png" width="640">
+</p>
+
+- **Slideshow** plays your photos — switch the browser to full screen. It starts with the
+  three sample albums that come with the app.
+- **Manage Library** is where you add photos and choose what plays.
+
+**On a monitor attached to the Pi** there is nothing to open: after the reboot the
+slideshow starts full screen by itself. Moving the mouse shows the controls; the ✕ in the
+top-right corner closes the slideshow (tap twice).
+
 The installer prints the Pi's address at the end; `hostname -I` on the Pi shows it too.
 
 ## Add your photos
 
-Photos live in `/var/www/html/time_machine/images/` on the Pi. Make one folder per album,
-or nest them by year — any layout works. Three ways to get them there:
+Open **Manage Library**. It works like any other web app — browse around and you will see
+what is there. Make a folder for each album, or nest them by year, and **Upload** your
+photos into it from the phone or computer you are holding. Then switch the folder on with
+its toggle, and it joins the slideshow.
 
-- **Over the network** — the installer shares the Pi's web folder. On a Mac, Finder → *Go →
-  Connect to Server* → `smb://<pi-address>/SharedFolder`; on Windows,
-  `\\<pi-address>\SharedFolder`. Open `time_machine/images/` and copy your folders in.
-- **Upload** from the management page, into any folder.
-- **USB drive** — plug it into the Pi and copy with the file manager.
+For a large collection, the Pi's photo folder is also shared on your home network as
+`SharedFolder`, so whole folders can be copied across from a computer.
 
-Then, on the management page, open a folder and press **Add to slideshow**.
-
-<p align="center">
-   <img src="https://raw.githubusercontent.com/jiteshsaini/files/main/img/time-machine_choose_albums.jpg" width="250">
-   <img src="https://raw.githubusercontent.com/jiteshsaini/files/main/img/time-machine_folders.jpg" width="250">
-   <img src="https://raw.githubusercontent.com/jiteshsaini/files/main/img/time-machine_settings.jpg" width="250">
-</p>
-<p align="center"><em>The management page on a phone: choosing the albums that play, browsing folders, slideshow settings.</em></p>
+<table align="center">
+  <tr>
+    <td align="center"><img src="https://raw.githubusercontent.com/jiteshsaini/files/main/img/time-machine_choose_albums.jpg" width="230"><br><sub>Choose the albums that play</sub></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/jiteshsaini/files/main/img/time-machine_folders.jpg" width="230"><br><sub>Browse your folders</sub></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/jiteshsaini/files/main/img/time-machine_settings.jpg" width="230"><br><sub>Slideshow settings</sub></td>
+  </tr>
+</table>
 
 ## Curating
 
