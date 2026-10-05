@@ -3,11 +3,24 @@
 **A photo slideshow that lives on a Raspberry Pi in your home — watch it in any browser,
 curate it from your phone.**
 
+<p align="left">
+Visit the website: <a href='https://helloworld.co.in' target='_blank'>
+   <img src='https://raw.githubusercontent.com/jiteshsaini/files/main/img/logo3.gif' height='40px'>
+</a> Youtube Channel:
+<a href='https://www.youtube.com/channel/UC_2OyRNVCWCH8ipgmAoJ1mA' target='_blank'>
+   <img src='https://raw.githubusercontent.com/jiteshsaini/files/main/img/btn_youtube_2.png' height='40px'>
+</a>
+</p>
+
 Time Machine turns a Raspberry Pi into a home for your photos and a slideshow that plays
 them. The slideshow is a web page, so anything on your Wi-Fi with a browser can show it:
 a laptop, a tablet, a smart TV, an old phone on a stand. The Pi itself needs no screen at
 all. And if you have a monitor or TV to spare, plug it into the Pi — it then starts the
 slideshow by itself and becomes an always-on picture frame.
+
+<p align="center">
+   <img src="https://raw.githubusercontent.com/jiteshsaini/files/main/img/time-machine_slideshow.jpg">
+</p>
 
 Your photos stay on the Pi, as ordinary files in ordinary folders. From any phone or
 laptop you choose which albums play, mark favourites, hide the photos you don't want on
@@ -86,6 +99,13 @@ or nest them by year — any layout works. Three ways to get them there:
 - **USB drive** — plug it into the Pi and copy with the file manager.
 
 Then, on the management page, open a folder and press **Add to slideshow**.
+
+<p align="center">
+   <img src="https://raw.githubusercontent.com/jiteshsaini/files/main/img/time-machine_choose_albums.jpg" width="250">
+   <img src="https://raw.githubusercontent.com/jiteshsaini/files/main/img/time-machine_folders.jpg" width="250">
+   <img src="https://raw.githubusercontent.com/jiteshsaini/files/main/img/time-machine_settings.jpg" width="250">
+</p>
+<p align="center"><em>The management page on a phone: choosing the albums that play, browsing folders, slideshow settings.</em></p>
 
 ## Curating
 
